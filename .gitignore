@@ -1,0 +1,10 @@
+# React Native
+node_modules/
+android/
+ios/
+
+# Vite
+web-portal/node_modules/
+
+# Logs
+*.log
