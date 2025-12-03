@@ -1,131 +1,93 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Alert, Platform } from 'react-native';
-import { Text, Button, Card, ActivityIndicator } from 'react-native-paper';
-import * as Application from 'expo-application';
-import * as Device from 'expo-device';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+import * as Application from 'expo-application'; // Import Application
+import api from '../services/api'; 
 
 export default function LoginScreen({ navigation }) {
-  const [deviceId, setDeviceId] = useState('Fetching...');
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    getDeviceId();
-  }, []);
-
-  // Requirement 3.1: Capture Unique Device ID
-  const getDeviceId = async () => {
-    let id = 'UNKNOWN_ID';
-    if (Platform.OS === 'android') {
-      id = Application.androidId; // Reliable ID on Android
-    } else if (Platform.OS === 'ios') {
-      id = await Application.getIosIdForVendorAsync(); // Reliable ID on iOS
-    } else {
-      id = 'WEB_SIMULATOR';
+  const handleLogin = async () => {
+    if (!email) {
+      Alert.alert("Error", "Please enter your student email");
+      return;
     }
-    setDeviceId(id);
-  };
 
-  const handleLogin = () => {
     setLoading(true);
-    
-    // Simulate Google Auth Delay
-    setTimeout(() => {
+    try {
+      // 1. Get Unique Device ID (Same logic as Scanner Screen)
+      let deviceId;
+      if (Platform.OS === 'android') {
+        deviceId = Application.getAndroidId();
+      } else {
+        deviceId = await Application.getIosIdForVendorAsync();
+      }
+
+      if (!deviceId) {
+        throw new Error("Could not fetch Device ID");
+      }
+
+      // 2. Send Email AND DeviceID to Backend
+      const { data } = await api.post('/auth/dev-login', { 
+        email, 
+        deviceId // <--- Binding happens here
+      });
+
+      // 3. Save Token
+      await SecureStore.setItemAsync('studentToken', data.token);
+      await SecureStore.setItemAsync('studentName', data.user.name);
+
+      navigation.replace('StudentHome'); 
+    } catch (error) {
+      console.log(error);
+      // Show backend error (e.g., "Device Mismatch" if they try a different phone)
+      Alert.alert("Login Failed", error.response?.data?.message || "Connection failed");
+    } finally {
       setLoading(false);
-      Alert.alert(
-        "Device Binding Successful", 
-        `Your Device ID: \n${deviceId}\n\nHas been registered to your account.`,
-        [
-          { text: "OK", onPress: () => navigation.replace('StudentHome') }
-        ]
-      );
-    }, 1500);
+    }
   };
 
+  // ... (Keep your return statement and styles exactly the same)
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text variant="headlineLarge" style={styles.title}>Attendance App</Text>
-        <Text variant="bodyMedium" style={styles.subtitle}>University of Smart Tech</Text>
-      </View>
+      <Text style={styles.title}>Student Login</Text>
+      <Text style={styles.subtitle}>Enter your university email</Text>
 
-      <Card style={styles.card}>
-        <Card.Content>
-          <Text variant="titleMedium" style={{marginBottom: 10, textAlign: 'center'}}>
-            Student Login
-          </Text>
-          
-          {/* Debugging Info: Showing Device ID on screen */}
-          <View style={styles.debugBox}>
-            <Text style={styles.debugLabel}>detected device id:</Text>
-            <Text style={styles.debugText}>{deviceId}</Text>
-          </View>
+      <TextInput
+        style={styles.input}
+        placeholder="student@tezu.ac.in"
+        placeholderTextColor="#999"
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        keyboardType="email-address"
+      />
 
-          <Button 
-            mode="contained" 
-            icon="google" 
-            onPress={handleLogin}
-            loading={loading}
-            buttonColor="#4285F4"
-            style={styles.button}
-          >
-            Sign in with Google
-          </Button>
-        </Card.Content>
-      </Card>
+      <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Login</Text>}
+      </TouchableOpacity>
 
-      <Text style={styles.footer}>Secure QR Attendance System v1.0</Text>
+{/* NEW BUTTON */}
+<TouchableOpacity 
+  style={{marginTop: 20, padding: 10}} 
+  onPress={() => navigation.navigate('Register')}
+>
+  <Text style={{textAlign:'center', color:'#1a73e8'}}>
+    New Student? Register Here
+  </Text>
+</TouchableOpacity>
+
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  title: {
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  subtitle: {
-    color: '#666',
-  },
-  card: {
-    elevation: 4,
-    backgroundColor: 'white',
-  },
-  button: {
-    marginTop: 15,
-    borderRadius: 8,
-  },
-  debugBox: {
-    backgroundColor: '#eee',
-    padding: 10,
-    borderRadius: 5,
-    marginBottom: 15,
-    alignItems: 'center',
-  },
-  debugLabel: {
-    fontSize: 10,
-    color: '#888',
-    textTransform: 'uppercase',
-  },
-  debugText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 20,
-    alignSelf: 'center',
-    color: '#aaa',
-    fontSize: 12,
-  }
+  container: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#f5f5f5' },
+  title: { fontSize: 28, fontWeight: 'bold', marginBottom: 10, color: '#333', textAlign: 'center' },
+  subtitle: { fontSize: 16, color: '#666', marginBottom: 30, textAlign: 'center' },
+  input: { backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 20, borderWidth: 1, borderColor: '#ddd' },
+  button: { backgroundColor: '#2196F3', padding: 15, borderRadius: 8, alignItems: 'center' },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });
