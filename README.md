@@ -1,4 +1,4 @@
-Here is a complete, step-by-step `README.md` style documentation to initialize and run the entire QR-Based Smart Attendance Manager project on Windows, Mac, or Linux.
+Here is a complete, step-by-step documentation to initialize and run the entire QR-Based Smart Attendance Manager project on Windows, Mac, or Linux.
 
 -----
 
