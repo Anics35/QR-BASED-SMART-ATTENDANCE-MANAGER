@@ -17,6 +17,11 @@ const Dashboard = () => {
   const [timer, setTimer] = useState(30);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Bulk Attendance State
+  const [showModal, setShowModal] = useState(false);
+  const [enrolledStudents, setEnrolledStudents] = useState([]);
+  const [selectedStudents, setSelectedStudents] = useState([]);
+
   // Storage Key for Persistence
   const STORAGE_KEY = `activeSession_${courseId}`;
   const creationAttempted = useRef(false);
@@ -48,9 +53,10 @@ const Dashboard = () => {
       try {
         const { data } = await api.post('/session/create', {
           courseId: courseId, 
-          latitude: 26.7017843, 
-          longitude: 92.833871, 
-          radius: 200, 
+          // UPDATED LOCATION & RADIUS
+          latitude: 26.361426, 
+          longitude: 92.673903, 
+          radius: 500, 
           duration: 60
         });
         
@@ -64,7 +70,8 @@ const Dashboard = () => {
         setSession(newSession);
         setLoading(false);
       } catch (error) {
-        alert("Failed to start session.");
+        console.error("Session Create Error:", error);
+        alert("Failed to start session. Check console.");
         navigate('/courses');
       }
     };
@@ -117,7 +124,53 @@ const Dashboard = () => {
     return () => clearInterval(pollInterval);
   }, [session]);
 
-  // 5. Handlers
+  // 5. Bulk Manual Attendance Logic
+  const openBulkModal = async () => {
+    try {
+      // FIX: Changed endpoint from '/enrolled' to '/students'
+      const { data } = await api.get(`/course/${courseId}/students`);
+      
+      // Filter out students who are ALREADY present
+      const presentStudentIds = attendees.map(a => a.studentId?._id);
+      const absentStudents = data.students.filter(
+        student => !presentStudentIds.includes(student._id)
+      );
+
+      setEnrolledStudents(absentStudents);
+      setShowModal(true);
+    } catch (error) {
+      console.error("Fetch Students Error:", error);
+      alert("Failed to fetch student list.");
+    }
+  };
+
+  const toggleStudent = (id) => {
+    if (selectedStudents.includes(id)) {
+      setSelectedStudents(selectedStudents.filter(sId => sId !== id));
+    } else {
+      setSelectedStudents([...selectedStudents, id]);
+    }
+  };
+
+  const handleBulkSubmit = async () => {
+    if (selectedStudents.length === 0) return;
+    
+    try {
+      await api.post('/attendance/bulk-manual', {
+        sessionId: session.id,
+        studentIds: selectedStudents
+      });
+      
+      alert("Success! Students marked present.");
+      setShowModal(false);
+      setSelectedStudents([]);
+      fetchAttendees(); // Refresh immediately
+    } catch (error) {
+      alert(error.response?.data?.message || "Failed to mark attendance.");
+    }
+  };
+
+  // 6. Other Handlers
   const handleEndClass = () => {
     if (window.confirm("Are you sure you want to end this class?")) {
       localStorage.removeItem(STORAGE_KEY);
@@ -137,23 +190,6 @@ const Dashboard = () => {
       link.parentNode.removeChild(link);
     } catch (error) {
       alert("Export failed.");
-    }
-  };
-
-  // --- NEW: MANUAL ADD FUNCTION ---
-  const handleManualAdd = async () => {
-    const email = prompt("Enter Student Email (e.g. student@tezu.ac.in):");
-    if (!email) return;
-
-    try {
-      await api.post('/attendance/manual', {
-        sessionId: session.id,
-        email: email
-      });
-      alert("Success! Student added.");
-      fetchAttendees(); // Update list immediately
-    } catch (error) {
-      alert(error.response?.data?.message || "Failed to add student. Check email.");
     }
   };
 
@@ -225,9 +261,9 @@ const Dashboard = () => {
                     <span style={styles.dot}></span> Live Updates
                   </div>
                 </div>
-                {/* NEW BUTTON LOCATION */}
-                <button style={styles.manualBtn} onClick={handleManualAdd}>
-                  + Add Student
+                {/* NEW BULK BUTTON */}
+                <button style={styles.manualBtn} onClick={openBulkModal}>
+                  + Bulk Mark
                 </button>
               </div>
 
@@ -252,7 +288,9 @@ const Dashboard = () => {
                            <div style={styles.timeTag}>
                              {new Date(record.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                            </div>
-                           {record.deviceValidation?.deviceId === "MANUAL_OVERRIDE" && (
+                           {/* Show Manual Tag if applicable */}
+                           {(record.deviceValidation?.deviceId === "MANUAL_OVERRIDE" || 
+                             record.deviceValidation?.deviceId === "MANUAL_BULK") && (
                                <span style={styles.manualTag}>Manual</span>
                            )}
                         </div>
@@ -278,6 +316,54 @@ const Dashboard = () => {
 
         </div>
       </main>
+
+      {/* BULK ATTENDANCE MODAL */}
+      {showModal && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <div style={styles.modalHeader}>
+              <h3 style={{margin:0, color:'#111827'}}>Mark Absent Students</h3>
+              <button onClick={() => setShowModal(false)} style={styles.closeBtn}>×</button>
+            </div>
+            
+            <div style={styles.checklist}>
+              {enrolledStudents.length === 0 ? (
+                <div style={styles.emptyModal}>
+                  <p>All students are present! 🎉</p>
+                </div>
+              ) : (
+                enrolledStudents.map(student => (
+                  <label key={student._id} style={styles.checkItem}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedStudents.includes(student._id)}
+                      onChange={() => toggleStudent(student._id)}
+                      style={styles.checkbox}
+                    />
+                    <div>
+                      <div style={styles.checkName}>{student.name}</div>
+                      <div style={styles.checkRoll}>{student.rollNumber}</div>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+
+            <div style={styles.modalFooter}>
+              <div style={{fontSize:'13px', color:'#666', fontWeight:'500'}}>
+                {selectedStudents.length} selected
+              </div>
+              <button 
+                style={selectedStudents.length === 0 ? styles.primaryBtnDisabled : styles.primaryBtn} 
+                onClick={handleBulkSubmit}
+                disabled={selectedStudents.length === 0}
+              >
+                Mark Present
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -345,15 +431,16 @@ const styles = {
   
   // Manual Button
   manualBtn: {
-    padding: '6px 12px',
+    padding: '8px 16px',
     backgroundColor: '#eff6ff',
     color: '#2563eb',
     border: '1px dashed #2563eb',
     borderRadius: '20px',
-    fontSize: '12px',
+    fontSize: '13px',
     fontWeight: '600',
     cursor: 'pointer',
     transition: 'all 0.2s',
+    display: 'flex', alignItems: 'center', gap: '4px'
   },
 
   // QR Specifics
@@ -438,7 +525,19 @@ const styles = {
     fontWeight: '600',
     cursor: 'pointer',
     fontSize: '14px',
-    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
+    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+    transition: 'all 0.2s',
+  },
+  primaryBtnDisabled: {
+    flex: 1,
+    padding: '12px',
+    background: '#93c5fd',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontWeight: '600',
+    cursor: 'not-allowed',
+    fontSize: '14px',
   },
   secondaryBtn: {
     flex: 1,
@@ -450,6 +549,55 @@ const styles = {
     fontWeight: '600',
     cursor: 'pointer',
     fontSize: '14px'
+  },
+
+  // --- MODAL STYLES ---
+  modalOverlay: {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    backdropFilter: 'blur(2px)',
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    zIndex: 1000
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    padding: '24px',
+    borderRadius: '16px',
+    width: '420px',
+    maxHeight: '80vh',
+    display: 'flex', flexDirection: 'column',
+    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+  },
+  modalHeader: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: '16px', borderBottom: '1px solid #f3f4f6', paddingBottom: '16px'
+  },
+  closeBtn: {
+    background: '#f3f4f6', border: 'none', fontSize: '20px', 
+    width: '32px', height: '32px', borderRadius: '50%',
+    cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center'
+  },
+  checklist: {
+    overflowY: 'auto', flex: 1, paddingRight: '8px',
+    maxHeight: '400px'
+  },
+  checkItem: {
+    display: 'flex', alignItems: 'center', gap: '16px',
+    padding: '12px', borderBottom: '1px solid #f9fafb', cursor: 'pointer',
+    borderRadius: '8px', transition: 'background 0.2s',
+    ':hover': { background: '#f9fafb' }
+  },
+  checkbox: {
+    width: '18px', height: '18px', cursor: 'pointer', accentColor: '#2563eb'
+  },
+  checkName: { fontWeight: '600', color: '#1f2937', fontSize: '15px' },
+  checkRoll: { fontSize: '13px', color: '#6b7280' },
+  modalFooter: {
+    marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #f3f4f6',
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+  },
+  emptyModal: {
+    textAlign: 'center', padding: '30px', color: '#6b7280', fontStyle: 'italic'
   }
 };
 

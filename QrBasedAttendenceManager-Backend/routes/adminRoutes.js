@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { getSystemStats, getAllUsers, deleteUser , getAllCourses} = require("../controllers/adminController");
+const { getSystemStats, getAllUsers, deleteUser , getAllCourses, getUserDetailsWithStats} = require("../controllers/adminController");
 const verifyJWT = require("../middleware/verifyJWT");
 const verifyAdmin = require("../middleware/verifyAdmin");
 
@@ -11,6 +11,7 @@ router.use(verifyAdmin);
 router.get("/stats", getSystemStats);
 router.get("/users", getAllUsers);
 router.delete("/users/:id", deleteUser);
-router.get("/courses", getAllCourses); // <--- Add this
+router.get("/courses", getAllCourses); 
+router.get("/users/:id/stats", getUserDetailsWithStats);
 
 module.exports = router;

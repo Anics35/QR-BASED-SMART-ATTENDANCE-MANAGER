@@ -96,3 +96,100 @@ exports.getAllCourses = async (req, res) => {
     res.status(500).json({ message: "Fetch failed", error: err.message });
   }
 };
+
+
+
+/**
+ * Get Detailed Stats for a Specific User (Student/Teacher)
+ */
+exports.getUserDetailsWithStats = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id).select('-googleId');
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    let stats = {};
+
+    if (user.role === 'student') {
+        // 1. Find all courses the student is enrolled in
+        const courses = await Course.find({ enrolledStudents: id });
+
+        const subjectWise = [];
+        let totalClassesOverall = 0;
+        let attendedClassesOverall = 0;
+
+        for (const course of courses) {
+            // A. Count total sessions conducted for this course
+            const totalSessions = await Session.countDocuments({ courseId: course._id });
+
+            // B. Count how many the student attended
+            const attendedCount = await Attendance.countDocuments({
+                courseId: course._id,
+                studentId: id,
+                status: 'present'
+            });
+
+            const percentage = totalSessions > 0 
+                ? ((attendedCount / totalSessions) * 100).toFixed(1) 
+                : "0.0";
+
+            subjectWise.push({
+                courseId: course._id,
+                courseName: course.courseName,
+                courseCode: course.courseCode,
+                totalClasses: totalSessions,
+                attendedClasses: attendedCount,
+                percentage: percentage
+            });
+
+            totalClassesOverall += totalSessions;
+            attendedClassesOverall += attendedCount;
+        }
+
+        const overallPercentage = totalClassesOverall > 0 
+            ? ((attendedClassesOverall / totalClassesOverall) * 100).toFixed(1) 
+            : "0.0";
+
+        stats = {
+            overallPercentage,
+            totalClasses: totalClassesOverall,
+            attendedClasses: attendedClassesOverall,
+            subjectWise
+        };
+
+    } else if (user.role === 'teacher') {
+        // 1. Find courses taught by this teacher
+        const courses = await Course.find({ teacherId: id });
+
+        const subjectWise = [];
+        let totalSessionsHosted = 0;
+
+        for (const course of courses) {
+            // Count sessions created for this course
+            const sessionCount = await Session.countDocuments({ courseId: course._id });
+            
+            subjectWise.push({
+                courseId: course._id,
+                courseName: course.courseName,
+                courseCode: course.courseCode,
+                totalSessions: sessionCount,
+                studentCount: course.enrolledStudents.length
+            });
+
+            totalSessionsHosted += sessionCount;
+        }
+
+        stats = {
+            totalSessionsHosted,
+            courseCount: courses.length,
+            subjectWise
+        };
+    }
+
+    res.status(200).json({ user, stats });
+
+  } catch (err) {
+    console.error("Stats Error:", err);
+    res.status(500).json({ message: "Failed to fetch user stats", error: err.message });
+  }
+};

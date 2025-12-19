@@ -1,3 +1,4 @@
+const mongoose = require("mongoose"); 
 const Attendance = require("../models/attendance");
 const Session = require("../models/session");
 const User = require("../models/userModel");
@@ -253,5 +254,112 @@ exports.getStudentCourseHistory = async (req, res) => {
     return res.status(200).json({ history });
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch detailed history", error: err.message });
+  }
+};
+
+
+/**
+ * 5. Bulk Manual Attendance (Select Multiple Students)
+ */
+exports.markBulkAttendance = async (req, res) => {
+  try {
+    const { sessionId, studentIds } = req.body;
+
+    // 1. Find Session
+    const session = await Session.findById(sessionId);
+    if (!session) return res.status(404).json({ message: "Session not found" });
+
+    // 2. Validate Students
+    const students = await User.find({ _id: { $in: studentIds }, role: 'student' });
+    if (students.length === 0) return res.status(400).json({ message: "No valid students found" });
+
+    // 3. Loop and Mark Attendance
+    let markedCount = 0;
+    
+    for (const student of students) {
+        // Check duplicate
+        const existing = await Attendance.findOne({ sessionId, studentId: student._id });
+        if (existing) continue; // Skip if already present
+
+        // Create Record
+        await Attendance.create({
+            sessionId,
+            courseId: session.courseId,
+            studentId: student._id,
+            status: "present",
+            deviceValidation: { deviceId: "MANUAL_BULK", isValidDevice: true },
+            locationValidation: { studentLatitude: 0, studentLongitude: 0, distance: 0, isWithinRadius: true },
+            qrValidation: { sessionToken: "MANUAL_BULK", isValid: true },
+        });
+
+        // Optional: Log action (can be commented out for performance if marking 50+ students)
+        // await logAction({ ... });
+        markedCount++;
+    }
+
+    return res.status(200).json({ message: `Successfully marked ${markedCount} students present.` });
+
+  } catch (err) {
+    console.error("Bulk Mark Error:", err);
+    res.status(500).json({ message: "Bulk marking failed", error: err.message });
+  }
+};
+
+/**
+ * 6. Get My History for a Specific Course (Student App)
+ */
+exports.getMyCourseHistory = async (req, res) => {
+  try {
+    console.log("➡️  Received History Request");
+
+    // 1. Safety Check: Is User Authenticated?
+    if (!req.user || !req.user.id) {
+        console.error("❌ Error: req.user is undefined. Middleware missing?");
+        return res.status(401).json({ message: "Unauthorized" });
+    }
+    
+    const studentId = req.user.id;
+    const { courseId } = req.params;
+
+    console.log(`👤 Student: ${studentId}, 📚 Course: ${courseId}`);
+
+    // 2. Safety Check: Is CourseID valid?
+    if (!courseId || courseId === 'undefined' || !mongoose.Types.ObjectId.isValid(courseId)) {
+        console.error("❌ Error: Invalid Course ID format");
+        return res.status(400).json({ message: "Invalid Course ID provided" });
+    }
+
+    // 3. Fetch Data
+    const allSessions = await Session.find({ courseId }).sort({ sessionDate: -1 });
+    
+    // If no sessions, return empty immediately
+    if (!allSessions || allSessions.length === 0) {
+        return res.status(200).json({ history: [] });
+    }
+
+    const studentAttendance = await Attendance.find({ studentId, courseId });
+
+    // 4. Map Results
+    const history = allSessions.map((session) => {
+      const record = studentAttendance.find(
+        (a) => a.sessionId.toString() === session._id.toString()
+      );
+
+      return {
+        _id: session._id,
+        date: session.sessionDate,
+        status: record ? "present" : "absent",
+        markedAt: record ? record.timestamp : null,
+        duration: session.duration || 60
+      };
+    });
+
+    console.log(`✅ Found ${history.length} history records`);
+    return res.status(200).json({ history });
+
+  } catch (err) {
+    console.error("🔥 CRITICAL SERVER ERROR:", err);
+    // This prevents the app from hanging, sending a proper error response
+    return res.status(500).json({ message: "Server Error", error: err.message });
   }
 };

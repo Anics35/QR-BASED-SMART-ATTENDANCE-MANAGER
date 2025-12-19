@@ -1,9 +1,7 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-// ⚠️ IMPORTANT: Replace with your PC's Local IP address (e.g., 192.168.1.5)
-// Do NOT use 'localhost' because your phone cannot see 'localhost' on your laptop.
-const API_URL = 'http://10.135.134.218:8080'; 
+const API_URL = 'http://10.142.6.218:8080'; 
 
 const api = axios.create({
   baseURL: API_URL,

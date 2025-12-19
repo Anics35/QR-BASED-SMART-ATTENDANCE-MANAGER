@@ -12,6 +12,7 @@ const {
 
 // 2. Import Middleware (This was missing!)
 const verifyJWT = require('../middleware/verifyJWT');
+const authController = require('../controllers/authController');
 
 // --- ROUTES ---
 
@@ -27,5 +28,7 @@ router.post('/register', register);
 
 // Device Management (Teacher/Admin only)
 router.post('/reset-device', verifyJWT, resetDevice);
+
+router.get('/me', verifyJWT, authController.getMe);
 
 module.exports = router;

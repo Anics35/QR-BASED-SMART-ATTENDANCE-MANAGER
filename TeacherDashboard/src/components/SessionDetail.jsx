@@ -5,10 +5,16 @@ import api from '../api';
 const SessionDetail = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { sessionId, sessionDate, courseName } = location.state || {};
+  // Get courseId from state if available, we will also try to derive it later
+  const { sessionId, sessionDate, courseName, courseId } = location.state || {};
 
   const [attendees, setAttendees] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Bulk Attendance State
+  const [showModal, setShowModal] = useState(false);
+  const [enrolledStudents, setEnrolledStudents] = useState([]);
+  const [selectedStudents, setSelectedStudents] = useState([]);
 
   // Fetch Data
   useEffect(() => {
@@ -27,22 +33,58 @@ const SessionDetail = () => {
     }
   };
 
-  // Manual Add Handler
-  const handleManualAdd = async () => {
-    const email = prompt("Enter Student Email (e.g., student@tezu.ac.in):");
-    if (!email) return;
+  // --- BULK MANUAL ATTENDANCE LOGIC ---
+
+  const openBulkModal = async () => {
+    // 1. Determine Course ID (Fallback to first attendee's courseId if not in navigation state)
+    const targetCourseId = courseId || (attendees.length > 0 ? attendees[0].courseId : null);
+
+    if (!targetCourseId) {
+      alert("Cannot verify Course ID. Please ensure students are enrolled or navigate from the Course page.");
+      return;
+    }
 
     try {
-      setLoading(true);
-      await api.post('/attendance/manual', {
-        sessionId,
-        email
+      // 2. Fetch Enrolled Students
+      const { data } = await api.get(`/course/${targetCourseId}/students`);
+      
+      // 3. Filter out students ALREADY present in this session
+      const presentStudentIds = attendees.map(a => a.studentId?._id);
+      const absentStudents = data.students.filter(
+        student => !presentStudentIds.includes(student._id)
+      );
+
+      setEnrolledStudents(absentStudents);
+      setShowModal(true);
+    } catch (error) {
+      console.error("Fetch Error:", error);
+      alert("Failed to fetch student list. " + (error.response?.data?.message || ""));
+    }
+  };
+
+  const toggleStudent = (id) => {
+    if (selectedStudents.includes(id)) {
+      setSelectedStudents(selectedStudents.filter(sId => sId !== id));
+    } else {
+      setSelectedStudents([...selectedStudents, id]);
+    }
+  };
+
+  const handleBulkSubmit = async () => {
+    if (selectedStudents.length === 0) return;
+
+    try {
+      await api.post('/attendance/bulk-manual', {
+        sessionId: sessionId,
+        studentIds: selectedStudents
       });
-      alert("Success! Student marked present.");
+
+      alert("Success! Students marked present.");
+      setShowModal(false);
+      setSelectedStudents([]);
       fetchAttendees(); // Refresh list
     } catch (error) {
-      alert(error.response?.data?.message || "Failed to add student");
-      setLoading(false);
+      alert(error.response?.data?.message || "Failed to add students");
     }
   };
 
@@ -93,10 +135,10 @@ const SessionDetail = () => {
             </div>
           </div>
 
-          {/* Action Card */}
+          {/* Action Card - UPDATED BUTTON */}
           <div style={{...styles.statCard, border:'1px dashed #2563eb', background:'#eff6ff', justifyContent:'center'}}>
-             <button style={styles.addBtn} onClick={handleManualAdd}>
-                + Manually Mark Student
+             <button style={styles.addBtn} onClick={openBulkModal}>
+                + Bulk Mark Students
              </button>
           </div>
         </div>
@@ -144,7 +186,8 @@ const SessionDetail = () => {
                       </td>
                       <td style={styles.td}>
                         <span style={styles.mono}>
-                          {record.deviceValidation?.deviceId === "MANUAL_OVERRIDE" 
+                          {(record.deviceValidation?.deviceId === "MANUAL_OVERRIDE" || 
+                            record.deviceValidation?.deviceId === "MANUAL_BULK")
                             ? "Manual Entry" 
                             : record.deviceValidation?.deviceId?.slice(0, 12) + "..."
                           }
@@ -161,6 +204,54 @@ const SessionDetail = () => {
           )}
         </div>
       </div>
+
+      {/* BULK ATTENDANCE MODAL */}
+      {showModal && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <div style={styles.modalHeader}>
+              <h3 style={{margin:0, color:'#111827'}}>Mark Absent Students</h3>
+              <button onClick={() => setShowModal(false)} style={styles.closeBtn}>×</button>
+            </div>
+            
+            <div style={styles.checklist}>
+              {enrolledStudents.length === 0 ? (
+                <div style={styles.emptyModal}>
+                  <p>All students are present! 🎉</p>
+                </div>
+              ) : (
+                enrolledStudents.map(student => (
+                  <label key={student._id} style={styles.checkItem}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedStudents.includes(student._id)}
+                      onChange={() => toggleStudent(student._id)}
+                      style={styles.checkbox}
+                    />
+                    <div>
+                      <div style={styles.checkName}>{student.name}</div>
+                      <div style={styles.checkRoll}>{student.rollNumber}</div>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+
+            <div style={styles.modalFooter}>
+              <div style={{fontSize:'13px', color:'#666', fontWeight:'500'}}>
+                {selectedStudents.length} selected
+              </div>
+              <button 
+                style={selectedStudents.length === 0 ? styles.primaryBtnDisabled : styles.primaryBtn} 
+                onClick={handleBulkSubmit}
+                disabled={selectedStudents.length === 0}
+              >
+                Mark Present
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -208,7 +299,80 @@ const styles = {
   // Loading
   loadingState: { padding: '3rem', textAlign: 'center', color: '#6b7280' },
   spinner: { width: '24px', height: '24px', border: '3px solid #e5e7eb', borderTop: '3px solid #2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' },
-  emptyState: { padding: '4rem', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' }
+  emptyState: { padding: '4rem', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' },
+
+  // --- MODAL STYLES ---
+  modalOverlay: {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    backdropFilter: 'blur(2px)',
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    zIndex: 1000
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    padding: '24px',
+    borderRadius: '16px',
+    width: '420px',
+    maxHeight: '80vh',
+    display: 'flex', flexDirection: 'column',
+    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+  },
+  modalHeader: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: '16px', borderBottom: '1px solid #f3f4f6', paddingBottom: '16px'
+  },
+  closeBtn: {
+    background: '#f3f4f6', border: 'none', fontSize: '20px', 
+    width: '32px', height: '32px', borderRadius: '50%',
+    cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center'
+  },
+  checklist: {
+    overflowY: 'auto', flex: 1, paddingRight: '8px',
+    maxHeight: '400px'
+  },
+  checkItem: {
+    display: 'flex', alignItems: 'center', gap: '16px',
+    padding: '12px', borderBottom: '1px solid #f9fafb', cursor: 'pointer',
+    borderRadius: '8px', transition: 'background 0.2s',
+    ':hover': { background: '#f9fafb' }
+  },
+  checkbox: {
+    width: '18px', height: '18px', cursor: 'pointer', accentColor: '#2563eb'
+  },
+  checkName: { fontWeight: '600', color: '#1f2937', fontSize: '15px' },
+  checkRoll: { fontSize: '13px', color: '#6b7280' },
+  modalFooter: {
+    marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #f3f4f6',
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+  },
+  emptyModal: {
+    textAlign: 'center', padding: '30px', color: '#6b7280', fontStyle: 'italic'
+  },
+  primaryBtn: {
+    flex: 1,
+    padding: '12px',
+    background: '#2563eb',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontSize: '14px',
+    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+    transition: 'all 0.2s',
+  },
+  primaryBtnDisabled: {
+    flex: 1,
+    padding: '12px',
+    background: '#93c5fd',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontWeight: '600',
+    cursor: 'not-allowed',
+    fontSize: '14px',
+  },
 };
 
 export default SessionDetail;

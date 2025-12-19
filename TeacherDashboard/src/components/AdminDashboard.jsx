@@ -2,13 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 
-// You need to create/import these if you separated them, 
-// but for a single file solution, I will include the sub-components here.
-// Ideally, UserManagement should be in its own file, but this works perfectly too.
-
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [view, setView] = useState('overview'); // 'overview' | 'users' | 'courses'
+  const [userTab, setUserTab] = useState('teacher'); // NEW: 'teacher' | 'student'
+  
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [courses, setCourses] = useState([]);
@@ -81,72 +79,104 @@ const AdminDashboard = () => {
     </div>
   );
 
-  const renderUsers = () => (
-    <div style={styles.tableCard}>
-      <div style={styles.tableHeader}>
-        <h3 style={styles.sectionTitle}>User Directory</h3>
-        <span style={styles.subtitle}>{users.length} Registered Users</span>
-      </div>
-      
-      <div style={styles.tableWrapper}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>User Profile</th>
-              <th style={styles.th}>Role</th>
-              <th style={styles.th}>Department</th>
-              <th style={styles.th}>Status</th>
-              <th style={styles.th}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map(user => (
-              <tr key={user._id} style={styles.tr}>
-                <td style={styles.td}>
-                  <div style={styles.profileCell}>
-                    <div style={{
-                        ...styles.avatar, 
-                        background: user.role==='student'?'#3b82f6':'#8b5cf6'
-                    }}>
-                        {user.name.charAt(0)}
-                    </div>
-                    <div>
-                        <div 
-                            style={styles.clickableName}
-                            onClick={() => navigate('/user-detail', { state: { user } })}
-                        >
-                            {user.name}
-                        </div>
-                        <div style={styles.email}>{user.email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td style={styles.td}>
-                  <span style={user.role==='student' ? styles.studentBadge : styles.teacherBadge}>
-                      {user.role.toUpperCase()}
-                  </span>
-                </td>
-                <td style={styles.td}>{user.department || '-'}</td>
-                <td style={styles.td}>
-                    {user.role === 'student' && (
-                        user.deviceId 
-                        ? <span style={styles.activeTag}>Device Bound</span> 
-                        : <span style={styles.warnTag}>No Device</span>
-                    )}
-                     {user.role === 'teacher' && <span style={styles.activeTag}>Active</span>}
-                </td>
-                <td style={styles.td}>
-                  <button style={styles.deleteBtn} onClick={() => handleDeleteUser(user._id)}>
-                    Delete
-                  </button>
-                </td>
+  const renderUsers = () => {
+    // Filter users based on selected tab
+    const filteredUsers = users.filter(u => u.role === userTab);
+
+    return (
+      <div style={styles.tableCard}>
+        <div style={styles.tableHeader}>
+          <div>
+            <h3 style={styles.sectionTitle}>User Directory</h3>
+            <span style={styles.subtitle}>Manage system access</span>
+          </div>
+          
+          {/* TOGGLE TABS */}
+          <div style={styles.tabGroup}>
+            <button 
+                style={userTab === 'teacher' ? styles.activeTabBtn : styles.tabBtn} 
+                onClick={() => setUserTab('teacher')}
+            >
+                👨‍🏫 Faculty
+            </button>
+            <button 
+                style={userTab === 'student' ? styles.activeTabBtn : styles.tabBtn} 
+                onClick={() => setUserTab('student')}
+            >
+                🎓 Students
+            </button>
+          </div>
+        </div>
+        
+        <div style={styles.tableWrapper}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Name & Email</th>
+                <th style={styles.th}>Role</th>
+                <th style={styles.th}>Department</th>
+                <th style={styles.th}>Status / Device</th>
+                <th style={styles.th}>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredUsers.length === 0 ? (
+                  <tr>
+                      <td colSpan="5" style={{...styles.td, textAlign:'center', padding:'30px', color:'#94a3b8'}}>
+                          No {userTab}s found in the system.
+                      </td>
+                  </tr>
+              ) : (
+                  filteredUsers.map(user => (
+                    <tr key={user._id} style={styles.tr}>
+                        <td style={styles.td}>
+                        <div style={styles.profileCell}>
+                            <div style={{
+                                ...styles.avatar, 
+                                background: user.role==='student'?'#dbeafe':'#f3e8ff',
+                                color: user.role==='student'?'#1d4ed8':'#7e22ce'
+                            }}>
+                                {user.name.charAt(0)}
+                            </div>
+                            <div>
+                                <div 
+                                    style={styles.clickableName}
+                                    onClick={() => navigate('/user-detail', { state: { user } })}
+                                >
+                                    {user.name}
+                                </div>
+                                <div style={styles.email}>{user.email}</div>
+                            </div>
+                        </div>
+                        </td>
+                        <td style={styles.td}>
+                        <span style={user.role==='student' ? styles.studentBadge : styles.teacherBadge}>
+                            {user.role.toUpperCase()}
+                        </span>
+                        </td>
+                        <td style={styles.td}>{user.department || '-'}</td>
+                        <td style={styles.td}>
+                            {user.role === 'student' && (
+                                user.deviceId 
+                                ? <span style={styles.activeTag}>Device Bound</span> 
+                                : <span style={styles.warnTag}>Unbound</span>
+                            )}
+                            {user.role === 'teacher' && <span style={styles.activeTag}>Active Account</span>}
+                        </td>
+                        <td style={styles.td}>
+                        <button style={styles.deleteBtn} onClick={() => handleDeleteUser(user._id)}>
+                            Remove
+                        </button>
+                        </td>
+                    </tr>
+                  ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderCourses = () => (
     <div style={styles.tableCard}>
@@ -330,6 +360,12 @@ const styles = {
   tableHeader: { padding: '20px', borderBottom: '1px solid #e2e8f0', display:'flex', justifyContent:'space-between', alignItems:'center' },
   sectionTitle: { margin: 0, fontSize: '16px', fontWeight:'600', color:'#1e293b' },
   subtitle: { fontSize: '13px', color: '#64748b' },
+  
+  // Tabs
+  tabGroup: { display:'flex', gap:'8px', background:'#f1f5f9', padding:'4px', borderRadius:'8px' },
+  tabBtn: { padding: '6px 12px', border: 'none', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: '500', cursor: 'pointer', borderRadius: '6px' },
+  activeTabBtn: { padding: '6px 12px', border: 'none', background: 'white', color: '#0f172a', fontSize: '13px', fontWeight: '600', cursor: 'pointer', borderRadius: '6px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' },
+
   tableWrapper: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left' },
   th: { padding: '16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '12px', textTransform: 'uppercase', color: '#64748b', fontWeight: '600' },

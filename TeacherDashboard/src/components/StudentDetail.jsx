@@ -11,6 +11,9 @@ const StudentDetail = () => {
 
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // 1. ADD: State to track if device was just unbound
+  const [isDeviceBound, setIsDeviceBound] = useState(true); 
 
   // Statistics
   const totalSessions = history.length;
@@ -42,6 +45,10 @@ const StudentDetail = () => {
 
     try {
       await api.post('/auth/reset-device', { studentId });
+      
+      // 2. UPDATE: Set state to false on success
+      setIsDeviceBound(false);
+      
       alert("✅ Device Unbound Successfully.\nThe student can now register a new device.");
     } catch (error) {
       alert(error.response?.data?.message || "Failed to reset device");
@@ -92,14 +99,31 @@ const StudentDetail = () => {
             </div>
           </div>
 
-          {/* Card 3: Device Actions */}
-          <div style={{...styles.statCard, border:'1px solid #fecaca', background:'#fff1f2'}}>
-            <div style={{...styles.statIcon, background:'#fee2e2', color:'#dc2626'}}>📱</div>
+          {/* Card 3: Device Actions (UPDATED) */}
+          <div style={{
+            ...styles.statCard, 
+            border: isDeviceBound ? '1px solid #fecaca' : '1px solid #bbf7d0', 
+            background: isDeviceBound ? '#fff1f2' : '#f0fdf4'
+          }}>
+            <div style={{
+              ...styles.statIcon, 
+              background: isDeviceBound ? '#fee2e2' : '#dcfce7', 
+              color: isDeviceBound ? '#dc2626' : '#166534'
+            }}>
+              {isDeviceBound ? '📱' : '🔓'}
+            </div>
             <div style={{flex:1}}>
               <div style={styles.statLabel}>Device Security</div>
-              <button style={styles.dangerBtn} onClick={handleDeviceReset}>
-                🔓 Unbind Device
-              </button>
+              
+              {isDeviceBound ? (
+                <button style={styles.dangerBtn} onClick={handleDeviceReset}>
+                  🔓 Unbind Device
+                </button>
+              ) : (
+                <div style={styles.successText}>
+                  ✅ Device Unbound
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -133,7 +157,7 @@ const StudentDetail = () => {
                 <tbody>
                   {history.map((item) => {
                     const isPresent = item.status === 'present';
-                    const isManual = item.device === 'MANUAL_OVERRIDE';
+                    const isManual = item.device === 'MANUAL_OVERRIDE' || item.device === 'MANUAL_BULK';
                     
                     return (
                       <tr key={item.sessionId} style={styles.tr}>
@@ -194,12 +218,13 @@ const styles = {
   main: { maxWidth: '1000px', margin: '0 auto', padding: '2rem' },
   
   statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', marginBottom: '2rem' },
-  statCard: { background: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '1rem', border: '1px solid #f3f4f6' },
-  statIcon: { width: '3rem', height: '3rem', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '1.5rem' },
+  statCard: { background: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '1rem', border: '1px solid #f3f4f6', transition: 'all 0.3s' },
+  statIcon: { width: '3rem', height: '3rem', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '1.5rem', transition: 'all 0.3s' },
   statLabel: { fontSize: '0.875rem', color: '#6b7280', fontWeight: '500' },
   statValue: { fontSize: '1.5rem', fontWeight: '700', color: '#111827' },
   
   dangerBtn: { padding: '6px 12px', background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.8rem', marginTop:'4px' },
+  successText: { fontSize: '0.9rem', fontWeight: '700', color: '#166534', marginTop: '4px' },
 
   tableCard: { background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', overflow: 'hidden' },
   tableHeader: { padding: '1.5rem', borderBottom: '1px solid #e5e7eb' },
